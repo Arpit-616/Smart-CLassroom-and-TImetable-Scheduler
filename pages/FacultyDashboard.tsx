@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Card from "../components/ui/Card";
 import { ICONS } from "../constants";
 import { useAuth } from "../App";
@@ -104,11 +104,44 @@ const FacultySchedule: React.FC = () => {
   };
 
   const handleSubmitChangeRequest = () => {
-    // In a real app, this would send the request to a backend
-    alert(
-      `Your class change request has been submitted.\n\nCourse: ${selectedSlot?.course}\nCurrent: ${selectedSlot?.day} at ${selectedSlot?.time}\nRequest Type: ${changeForm.requestType}\nReason: ${changeForm.reason}`
-    );
-    setIsChangeModalOpen(false);
+    try {
+      const existingRaw = localStorage.getItem("timetable_scheduler_requests");
+      const existing: any[] = existingRaw ? JSON.parse(existingRaw) : [];
+      const newRequest = {
+        id: `${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        requesterName: user?.name || "",
+        type:
+          changeForm.requestType === "swap"
+            ? "SWAP"
+            : changeForm.requestType === "substitute"
+            ? "TAKEOVER"
+            : changeForm.requestType === "cancel"
+            ? "CANCEL"
+            : "RESCHEDULE",
+        from: {
+          day: selectedSlot?.day || "",
+          time: selectedSlot?.time || "",
+          course: selectedSlot?.course || "",
+        },
+        to:
+          changeForm.requestType === "reschedule"
+            ? { day: changeForm.preferredDay, time: changeForm.preferredTime }
+            : changeForm.requestType === "swap"
+            ? { note: changeForm.swapWith }
+            : undefined,
+        reason: changeForm.reason,
+        status: "PENDING",
+      };
+      localStorage.setItem(
+        "timetable_scheduler_requests",
+        JSON.stringify([newRequest, ...existing])
+      );
+      setIsChangeModalOpen(false);
+      alert("Request submitted.");
+    } catch (e) {
+      alert("Failed to submit request.");
+    }
   };
 
   const getTodayClasses = () => {
@@ -180,24 +213,35 @@ const FacultySchedule: React.FC = () => {
               Daily View
             </Button>
           </div>
-          {viewMode === "daily" && (
-            <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium text-slate-700">
-                Select Day:
-              </label>
-              <select
-                value={selectedDay}
-                onChange={(e) => setSelectedDay(e.target.value)}
-                className="text-sm border-slate-300 rounded-md"
-              >
-                {days.map((day) => (
-                  <option key={day} value={day}>
-                    {day}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div className="flex items-center space-x-2">
+            {viewMode === "daily" && (
+              <>
+                <label className="text-sm font-medium text-slate-700">
+                  Select Day:
+                </label>
+                <select
+                  value={selectedDay}
+                  onChange={(e) => setSelectedDay(e.target.value)}
+                  className="text-sm border-slate-300 rounded-md"
+                >
+                  {days.map((day) => (
+                    <option key={day} value={day}>
+                      {day}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                window.dispatchEvent(new Event("openCreateRequest"))
+              }
+            >
+              Make Request
+            </Button>
+          </div>
         </div>
 
         {viewMode === "weekly" ? (
@@ -693,7 +737,7 @@ const Notifications: React.FC = () => {
       case "LEAVE":
         return ICONS.calendar;
       case "CHANGE":
-        return ICONS.change;
+        return ICONS.rearrange;
       case "ANNOUNCEMENT":
         return ICONS.notification;
       default:
@@ -800,12 +844,419 @@ const FacultyDashboard: React.FC = () => {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
       <div className="lg:col-span-2 space-y-8">
         <FacultySchedule />
+        <RequestsSection />
       </div>
       <div className="space-y-8">
         <FacultyStats />
         <Notifications />
       </div>
     </div>
+  );
+};
+
+interface FacultyRequestItem {
+  id: string;
+  createdAt: string;
+  requesterName: string;
+  type: "SWAP" | "RESCHEDULE" | "TAKEOVER" | "CANCEL";
+  from: { day: string; time: string; course: string };
+  to?: any;
+  reason: string;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
+}
+
+const RequestsSection: React.FC = () => {
+  const { user } = useAuth();
+  const [requests, setRequests] = useState<FacultyRequestItem[]>([]);
+  const [filter, setFilter] = useState<
+    "ALL" | "PENDING" | "APPROVED" | "REJECTED"
+  >("ALL");
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    type: "RESCHEDULE" as "SWAP" | "RESCHEDULE" | "TAKEOVER" | "CANCEL",
+    fromDay: "",
+    fromTime: "",
+    fromCourse: "",
+    toDay: "",
+    toTime: "",
+    swapWith: "",
+    reason: "",
+  });
+
+  const daysAndSlots = useMemo(() => {
+    try {
+      const saved = localStorage.getItem("timetable_scheduler_departments");
+      const departments: Department[] = saved ? JSON.parse(saved) : [];
+      const dept = departments[0];
+      if (!dept) {
+        return {
+          days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+          slots: [
+            "09:00 - 10:00",
+            "10:00 - 11:00",
+            "11:00 - 12:00",
+            "13:00 - 14:00",
+            "14:00 - 15:00",
+          ],
+        };
+      }
+      return {
+        days: dept.settings.workingDays,
+        slots: dept.settings.periodTimings,
+      };
+    } catch (e) {
+      return {
+        days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        slots: [
+          "09:00 - 10:00",
+          "10:00 - 11:00",
+          "11:00 - 12:00",
+          "13:00 - 14:00",
+          "14:00 - 15:00",
+        ],
+      };
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("timetable_scheduler_requests");
+      const all: FacultyRequestItem[] = raw ? JSON.parse(raw) : [];
+      const mine = all.filter((r) => r.requesterName === (user?.name || ""));
+      setRequests(mine);
+    } catch (e) {
+      setRequests([]);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const handler = () => setIsCreateOpen(true);
+    window.addEventListener("openCreateRequest", handler);
+    return () => window.removeEventListener("openCreateRequest", handler);
+  }, []);
+
+  const visible = requests.filter((r) =>
+    filter === "ALL" ? true : r.status === filter
+  );
+
+  const cancelRequest = (id: string) => {
+    const raw = localStorage.getItem("timetable_scheduler_requests");
+    const all: FacultyRequestItem[] = raw ? JSON.parse(raw) : [];
+    const updated = all.map((r) =>
+      r.id === id ? { ...r, status: "CANCELLED" } : r
+    );
+    localStorage.setItem(
+      "timetable_scheduler_requests",
+      JSON.stringify(updated)
+    );
+    setRequests(updated.filter((r) => r.requesterName === (user?.name || "")));
+  };
+
+  const handleCreateSubmit = () => {
+    if (!createForm.fromDay || !createForm.fromTime || !createForm.fromCourse) {
+      alert("Please fill From Day, From Time and Course.");
+      return;
+    }
+    try {
+      const raw = localStorage.getItem("timetable_scheduler_requests");
+      const all: FacultyRequestItem[] = raw ? JSON.parse(raw) : [];
+      const newRequest: FacultyRequestItem = {
+        id: `${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        requesterName: user?.name || "",
+        type: createForm.type,
+        from: {
+          day: createForm.fromDay,
+          time: createForm.fromTime,
+          course: createForm.fromCourse,
+        },
+        to:
+          createForm.type === "RESCHEDULE"
+            ? { day: createForm.toDay, time: createForm.toTime }
+            : createForm.type === "SWAP"
+            ? { note: createForm.swapWith }
+            : undefined,
+        reason: createForm.reason,
+        status: "PENDING",
+      };
+      const updated = [newRequest, ...all];
+      localStorage.setItem(
+        "timetable_scheduler_requests",
+        JSON.stringify(updated)
+      );
+      setIsCreateOpen(false);
+      setCreateForm({
+        type: "RESCHEDULE",
+        fromDay: "",
+        fromTime: "",
+        fromCourse: "",
+        toDay: "",
+        toTime: "",
+        swapWith: "",
+        reason: "",
+      });
+      setRequests(
+        updated.filter((r) => r.requesterName === (user?.name || ""))
+      );
+      alert("Request created.");
+    } catch (e) {
+      alert("Failed to create request.");
+    }
+  };
+
+  return (
+    <Card
+      title="Requests"
+      icon={ICONS.rearrange}
+      action={
+        <div className="flex items-center space-x-2">
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as any)}
+            className="text-xs border-slate-300 rounded"
+          >
+            <option value="ALL">All</option>
+            <option value="PENDING">Pending</option>
+            <option value="APPROVED">Approved</option>
+            <option value="REJECTED">Rejected</option>
+          </select>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setIsCreateOpen(true)}
+          >
+            Make Request
+          </Button>
+        </div>
+      }
+    >
+      {visible.length === 0 ? (
+        <div className="text-center py-8 text-slate-500">
+          <p>No requests yet. Use "Request Change" on a class to create one.</p>
+        </div>
+      ) : (
+        <ul className="divide-y">
+          {visible.map((r) => (
+            <li key={r.id} className="py-3 flex items-start justify-between">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-800">
+                    {r.type}
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {new Date(r.createdAt).toLocaleString()}
+                  </span>
+                </div>
+                <p className="text-sm font-medium text-slate-800 mt-1">
+                  {r.from.course} — {r.from.day} {r.from.time}
+                </p>
+                {r.type === "RESCHEDULE" && r.to?.day && r.to?.time && (
+                  <p className="text-xs text-slate-600">
+                    Requested: {r.to.day}, {r.to.time}
+                  </p>
+                )}
+                {r.type === "SWAP" && r.to?.note && (
+                  <p className="text-xs text-slate-600">
+                    Swap with: {r.to.note}
+                  </p>
+                )}
+                {r.reason && (
+                  <p className="text-xs text-slate-600 mt-1">
+                    Reason: {r.reason}
+                  </p>
+                )}
+              </div>
+              <div className="text-right">
+                <span
+                  className={`text-xs px-2 py-0.5 rounded-full ${
+                    r.status === "PENDING"
+                      ? "bg-amber-100 text-amber-800"
+                      : r.status === "APPROVED"
+                      ? "bg-green-100 text-green-800"
+                      : r.status === "REJECTED"
+                      ? "bg-red-100 text-red-800"
+                      : "bg-slate-100 text-slate-700"
+                  }`}
+                >
+                  {r.status}
+                </span>
+                {r.status === "PENDING" && (
+                  <div className="mt-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => cancelRequest(r.id)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Modal
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        title="Make a Request"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Request Type
+            </label>
+            <select
+              value={createForm.type}
+              onChange={(e) =>
+                setCreateForm((f) => ({ ...f, type: e.target.value as any }))
+              }
+              className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+            >
+              <option value="RESCHEDULE">Reschedule</option>
+              <option value="SWAP">Swap</option>
+              <option value="TAKEOVER">Substitute/Takeover</option>
+              <option value="CANCEL">Cancel</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                From Day
+              </label>
+              <select
+                value={createForm.fromDay}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, fromDay: e.target.value }))
+                }
+                className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+              >
+                <option value="">Select</option>
+                {daysAndSlots.days.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                From Time
+              </label>
+              <select
+                value={createForm.fromTime}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, fromTime: e.target.value }))
+                }
+                className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+              >
+                <option value="">Select</option>
+                {daysAndSlots.slots.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Course
+              </label>
+              <input
+                value={createForm.fromCourse}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, fromCourse: e.target.value }))
+                }
+                placeholder="e.g., CS101"
+                className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+              />
+            </div>
+          </div>
+
+          {createForm.type === "RESCHEDULE" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Preferred Day
+                </label>
+                <select
+                  value={createForm.toDay}
+                  onChange={(e) =>
+                    setCreateForm((f) => ({ ...f, toDay: e.target.value }))
+                  }
+                  className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                >
+                  <option value="">Select</option>
+                  {daysAndSlots.days.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Preferred Time
+                </label>
+                <select
+                  value={createForm.toTime}
+                  onChange={(e) =>
+                    setCreateForm((f) => ({ ...f, toTime: e.target.value }))
+                  }
+                  className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                >
+                  <option value="">Select</option>
+                  {daysAndSlots.slots.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {createForm.type === "SWAP" && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Swap With
+              </label>
+              <input
+                value={createForm.swapWith}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, swapWith: e.target.value }))
+                }
+                placeholder="e.g., CS305 (Mon 11:00 - 12:00)"
+                className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Reason
+            </label>
+            <textarea
+              value={createForm.reason}
+              onChange={(e) =>
+                setCreateForm((f) => ({ ...f, reason: e.target.value }))
+              }
+              rows={3}
+              className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+              placeholder="Please provide a reason for this request..."
+            />
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-2">
+            <Button variant="ghost" onClick={() => setIsCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateSubmit}>Submit</Button>
+          </div>
+        </div>
+      </Modal>
+    </Card>
   );
 };
 
