@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Classroom & Timetable Scheduler</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: {
+                DEFAULT: '#007BFF',
+                '50': '#E6F2FF',
+                '100': '#CCE5FF',
+                '200': '#99CBFF',
+                '300': '#66B2FF',
+                '400': '#3398FF',
+                '500': '#007BFF',
+                '600': '#0062CC',
+                '700': '#004A99',
+                '800': '#003166',
+                '900': '#001933',
+              },
+              secondary: {
+                DEFAULT: '#17A2B8',
+                '50': '#E8F6F8',
+                '100': '#D1EDF1',
+                '200': '#A3DCE3',
+                '300': '#75CBD5',
+                '400': '#47B9C7',
+                '500': '#17A2B8',
+                '600': '#128293',
+                '700': '#0E616E',
+                '800': '#09414A',
+                '900': '#052025',
+              },
+              success: {
+                DEFAULT: '#28A745',
+                '50': '#EAF6EC',
+                '100': '#D5EDDB',
+                '200': '#ABD9B7',
+                '300': '#82C693',
+                '400': '#58B26F',
+                '500': '#28A745',
+                '600': '#208637',
+                '700': '#186429',
+                '800': '#10431C',
+                '900': '#08210E',
+              }
+            }
+          }
+        }
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.9.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "recharts": "https://aistudiocdn.com/recharts@^3.2.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-slate-50 text-slate-900">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
